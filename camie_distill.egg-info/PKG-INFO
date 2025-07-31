@@ -10,14 +10,17 @@ Keywords: deep-learning,vision,multilabel,distillation,huggingface
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: Apache Software License
 Classifier: Operating System :: OS Independent
-Requires-Python: >=3.9
+Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: torch>=2.1
-Requires-Dist: safetensors
 Requires-Dist: timm==0.9.12
-Requires-Dist: deepspeed==0.14.1
-Requires-Dist: huggingface_hub>=0.23
-Requires-Dist: pillow
-Requires-Dist: numpy
-Requires-Dist: tqdm
-Requires-Dist: pandas
+Requires-Dist: safetensors>=0.5.3
+Requires-Dist: deepspeed<0.17,>=0.16.3
+Dynamic: requires-python
+
+# Camie‑Distill (Deepone)
+
+Student‑teacher distillation toolkit for the Camie‑Tagger project.  
+Provides LoRA helpers, data loaders, and training scripts optimised for RTX 5090‑class GPUs.
+
+See `examples/` for a quick‑start notebook.
