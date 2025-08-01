@@ -88,33 +88,60 @@ def build_dataset(cfg):
                     if p.suffix.lower() in IMAGE_EXTS)
     if not images: raise SystemExit("No images found.")
 
-    writer = csv.writer(csv_path.open("w", newline='', encoding="utf-8"))
-    writer.writerow(["id", "file_name", "tag_idx", "tag"])
-    writer.writerow(["id", "file_name", "tag_idx", "tag", "neg_idx"])
+    writer = csv.writer(csv_path.open("w", newline="", encoding="utf-8"))
+    writer.writerow(["id", "file_name", "tag_idx", "tag", "neg_idx"])   # ← single header
 
     running_id = 0
     for i in tqdm(range(0, len(images), cfg.batch_size), unit="batch"):
-        paths = images[i:i+cfg.batch_size]
-        batch = [load_and_preprocess(p, size=512, fp16=cfg.fp16,
-                                     pad_colour=tuple(cfg.pad_colour))
-                 for p in paths]
+        paths = images[i : i + cfg.batch_size]
+        batch = [
+            load_and_preprocess(p, size=512, fp16=cfg.fp16, pad_colour=tuple(cfg.pad_colour))
+            for p in paths
+        ]
+
         logits = runner(batch)
-        probs  = 1. / (1. + np.exp(-logits))  # sigmoid
+        probs = 1.0 / (1.0 + np.exp(-logits))  # sigmoid
+
+        near_miss_bucket: list[tuple[Path, list[int]]] = []
 
         for pic, pb in zip(paths, probs):
-            sel = np.where(pb >= cfg.confidence_threshold)[0]
-            if not len(sel): continue
-            tags = [runner.idx2tag[j] for j in sel]
+            pos_idx = np.where(pb >= cfg.confidence_threshold)[0]
 
-            writer.writerow([running_id, pic.name,
-                             " ".join(map(str, sel)), " ".join(tags)])
-            running_id += 1
+            # -------- hard‑negatives --------
+            below = np.where(pb < cfg.confidence_threshold)[0]
+            if below.size:
+                hi = below[np.argsort(pb[below])[::-1]]
+                hard_neg = hi[: cfg.hard_negatives].tolist()
+            else:
+                hard_neg = []
 
-            if sidecar_dir:
-                (sidecar_dir / f"{pic.stem}.txt").write_text(
-                    ", ".join(tags), encoding="utf-8")
+            if pos_idx.size:
+                tags = [runner.idx2tag[j] for j in pos_idx]
+                writer.writerow(
+                    [
+                        running_id,
+                        pic.name,
+                        " ".join(map(str, pos_idx)),
+                        " ".join(tags),
+                        " ".join(map(str, hard_neg)),
+                    ]
+                )
+                if sidecar_dir:
+                    (sidecar_dir / f"{pic.stem}.txt").write_text(
+                        ", ".join(tags), encoding="utf-8")
+                shutil.copy2(pic, img_out_dir / pic.name)
+                running_id += 1
+            else:
+                near_miss_bucket.append((pic, hard_neg))
 
+        # -------- retain near‑misses --------
+        keep = int(round(len(paths) * cfg.near_miss_pct))
+        for pic, hard_neg in random.sample(near_miss_bucket, k=min(keep, len(near_miss_bucket))):
+            writer.writerow(
+                [running_id, pic.name, "", "", " ".join(map(str, hard_neg))]
+            )
             shutil.copy2(pic, img_out_dir / pic.name)
+            running_id += 1
 
     print(f"✓ {running_id} samples written to {csv_path}")
 

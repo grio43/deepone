@@ -30,6 +30,7 @@ dependencies = [
   "tqdm",
   "pandas",
   "pyyaml", # Added for orchestrator
+  "torchmetrics>=1.4.0"
 ]
 
 [project.urls]

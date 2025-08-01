@@ -198,15 +198,17 @@ def main(cfg) -> None:
     )
 
     # ── training loop ─────────────────────────────────────────────
-    total_steps = math.ceil(len(dl_train) / cfg.grad_accum) * cfg.epochs
-    step = 0
+    opt_step = 0
+    metrics_file = Path(cfg.output_dir) / "metrics.jsonl"
+    metrics_file.unlink(missing_ok=True)  # start fresh
     Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
-    metrics_file = Path(cfg.output_dir) / "metrics.json"
 
     for epoch in range(cfg.epochs):
         for img, tgt in dl_train:
-            img = img.to(model_engine.device, non_blocking=True)
-            tgt = tgt.to(model_engine.device, non_blocking=True)
+            img, tgt = (
+                img.to(model_engine.device, non_blocking=True),
+                tgt.to(model_engine.device, non_blocking=True),
+            )
 
             with torch.cuda.amp.autocast():
                 logits_i, logits_r = model_engine(img)
@@ -215,49 +217,33 @@ def main(cfg) -> None:
             model_engine.backward(loss)
             model_engine.step()
 
-            # ── update running F1s ────────────────────────────────
+            # ── accumulate for F1 ───────────────────────────
             with torch.no_grad():
                 prob = torch.sigmoid(logits_r.detach())
                 metric_micro.update(prob, tgt)
-                metric_macro.update(prob, tgt)            
+                metric_macro.update(prob, tgt)
 
-            if (
-                step % cfg.grad_accum == 0                      # one optimiser step
-                and model_engine.global_rank == 0
-            ):
-                micro_f1 = metric_micro.compute().item()
-                macro_f1 = metric_macro.compute().item()
+            # one optimiser step just finished
+            if model_engine.is_gradient_accumulation_boundary():
+                opt_step += 1
+                if model_engine.global_rank == 0:
+                    μ = metric_micro.compute().item()
+                    M = metric_macro.compute().item()
 
-                print(f"[{epoch+1}/{cfg.epochs}] step {step:>6}/{total_steps}  "
-                      f"loss={loss.item():.4f}")
-
-            step += 1
-
-        # ── end‑of‑epoch validation ───────────────────────────────
-        if model_engine.global_rank == 0 and val_dl is not None:
-            micro_f1, macro_f1 = _evaluate_f1(model_engine, val_dl)
-            metrics_file.write_text(
-                    json.dumps(
-                        {
-                            "step":  step,
-                            "micro_f1": round(micro_f1, 6),
-                            "macro_f1": round(macro_f1, 6),
-                        },
-                        indent=2,
+                    # JSON‑lines keeps file always valid
+                    metrics_file.open("a").write(
+                        json.dumps(
+                            {"step": opt_step, "micro_f1": round(μ, 6), "macro_f1": round(M, 6)}
+                        )
+                        + "\n"
                     )
-                )
-            metric_micro.reset(), metric_macro.reset()
 
-            print(f"[{epoch+1}/{cfg.epochs}] "
-                    f"step {step:>6}  "
-                    f"loss={loss.item():.4f}  "
-                    f"μ‑F1={micro_f1:.4f}  M‑F1={macro_f1:.4f}")
+                    print(
+                        f"[{epoch+1}/{cfg.epochs}] step {opt_step:>6} "
+                        f"loss={loss.item():.4f}  μ‑F1={μ:.4f}  M‑F1={M:.4f}"
+                    )
 
-            step += 1           
-            print(
-                f"✓ saved metrics – micro‑F1={micro_f1:.4f}, "
-                f"macro‑F1={macro_f1:.4f}"
-            )
+                metric_micro.reset(), metric_macro.reset()
 
 
 # ────────────────────────────────────────────────────────────────────
