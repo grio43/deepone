@@ -96,6 +96,11 @@ def main(cfg):
                     tag_cnt,
                     pad_colour=tuple(cfg.pad_colour),
                     fp16=False)
+    ds = CsvDataset(Path(cfg.csv_path),
+                    Path(cfg.img_root)
+                    tag_cnt,
+                    pad_colour=tuple(cfg.pad_colour),
+                    fp16=cfg.fp16)
     dl = DataLoader(ds, batch_size=cfg.micro_batch,
                     shuffle=True, num_workers=4, pin_memory=True)
 
@@ -152,6 +157,8 @@ if __name__ == "__main__":
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("--pad-colour", type=int, nargs=3,
                    default=(0,0,0), metavar=("R","G","B"))
+    p.add_argument("--fp16", action="store_true",
+            help="Load images in FP16 (saves VRAM & bandwidth)")
     cfg = p.parse_args()
     Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
     main(cfg)
