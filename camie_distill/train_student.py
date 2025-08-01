@@ -1,120 +1,202 @@
 
-"""
-Distillation loop using DeepSpeed ZeRO‑2 and the recipe published in the
-model card.  Handles automatic off‑loading of the teacher after pseudo‑labelling.
-"""
-import argparse, json, math, os
-from pathlib import Path
-import torch, torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-import deepspeed                    # pip install deepspeed
-from huggingface_hub import hf_hub_download
+from __future__ import annotations
 
-from focal_loss import UnifiedFocalLoss
-from student_model import StudentTagger
-from flash_stub import install_flash_stub; install_flash_stub()
+import argparse
+import json
+import math
+from pathlib import Path
+from typing import Tuple, List
+
+import deepspeed                           # pip install deepspeed
+import numpy as np
+import torch
+from sklearn.metrics import f1_score
+from torch.utils.data import DataLoader, Dataset
+
+from camie_distill.focal_loss import UnifiedFocalLoss
+from camie_distill.student_model import StudentTagger
+from camie_distill.flash_stub import install_flash_stub
+
+install_flash_stub()                       # make sure import hooks are in place
+
 
 # ────────────────────────────────────────────────────────────────────
 class CsvDataset(Dataset):
-    def __init__(self, csv_path: Path, img_dir: Path, tag_count: int,
-                 pad_colour, fp16):
+    """Lazy image loader that re‑uses the *exact* preprocessing logic
+    used by the teacher (`camie_distill.preprocessing.load_and_preprocess`)."""
+
+    def __init__(
+        self,
+        csv_path: Path,
+        img_dir: Path,
+        tag_count: int,
+        pad_colour: Tuple[int, int, int],
+        fp16: bool,
+    ) -> None:
         import pandas as pd
-        from preprocessing import load_and_preprocess
+        from camie_distill.preprocessing import load_and_preprocess
+
         self.df = pd.read_csv(csv_path)
         self.img_dir = img_dir
         self.tag_count = tag_count
         self.pad_colour, self.fp16 = pad_colour, fp16
-        self._cache = {}
+        self._preprocess = load_and_preprocess
+        self._cache: dict[Path, np.ndarray] = {}
 
-    def __len__(self): return len(self.df)
+    # PyTorch hooks --------------------------------------------------
+    def __len__(self) -> int:  # noqa: D401
+        return len(self.df)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         row = self.df.iloc[idx]
         path = self.img_dir / row.file_name
+
         if path not in self._cache:
-            self._cache[path] = load_and_preprocess(
-            path, size=512, pad_colour=self.pad_colour, fp16=self.fp16)
-                       
+            self._cache[path] = self._preprocess(
+                path, size=512, pad_colour=self.pad_colour, fp16=self.fp16
+            )
+
         img = torch.from_numpy(self._cache[path])
-        tag_idx = list(map(int, row.tag_idx.split()))
+        tag_idx = list(map(int, str(row.tag_idx).split()))
         target = torch.zeros(self.tag_count, dtype=torch.float32)
         target[tag_idx] = 1.0
         return img, target
+
+
 # ────────────────────────────────────────────────────────────────────
-def create_deepspeed_config(out_path: Path, lr: float, wd: float,
-                            train_samples: int, mb_size: int,
-                            accum_steps: int):
-    conf = {
+def _make_deepspeed_config(
+    out_path: Path,
+    lr: float,
+    wd: float,
+    train_samples: int,
+    mb_size: int,
+    accum_steps: int,
+) -> None:
+    """Write a tiny ZeRO‑2 JSON config to *out_path*."""
+    cfg = {
         "train_micro_batch_size_per_gpu": mb_size,
         "gradient_accumulation_steps": accum_steps,
         "optimizer": {
             "type": "AdamW",
-            "params": {
-                "lr": lr,
-                "betas": [0.9, 0.95],
-                "eps": 1e-8,
-                "weight_decay": wd
-            }
+            "params": {"lr": lr, "betas": [0.9, 0.95], "eps": 1e-8, "weight_decay": wd},
         },
         "scheduler": {
             "type": "WarmupLR",
             "params": {
                 "warmup_min_lr": lr * 1e-2,
                 "warmup_max_lr": lr,
-                "warmup_num_steps": int(0.25 * train_samples
-                                        / (mb_size * accum_steps))
-            }
+                "warmup_num_steps": int(0.25 * train_samples / (mb_size * accum_steps)),
+            },
         },
         "fp16": {"enabled": True},
         "zero_optimization": {
             "stage": 2,
             "allgather_partitions": True,
             "contiguous_gradients": True,
-            "offload_optimizer": {"device": "none"}
+            "offload_optimizer": {"device": "none"},
         },
         "activation_checkpointing": {
             "partition_activations": True,
-            "cpu_checkpointing": False
-        }
+            "cpu_checkpointing": False,
+        },
     }
-    out_path.write_text(json.dumps(conf, indent=2))
+    out_path.write_text(json.dumps(cfg, indent=2))
+
 
 # ────────────────────────────────────────────────────────────────────
-def main(cfg):
-    # Teacher logits already written by dataset_builder → pass None here
-    tag_meta = json.loads(Path(cfg.tag_meta).read_text())
-    tag_cnt  = len(tag_meta["idx_to_tag"])
+def _evaluate_f1(
+    model_engine,
+    val_dl: DataLoader,
+    thresh: float = 0.5,
+) -> tuple[float, float]:
+    """Return micro‑F1, macro‑F1 on *val_dl*."""
+    model_engine.eval()
+    y_true: List[np.ndarray] = []
+    y_pred: List[np.ndarray] = []
 
-    # Student & optimizer
+    with torch.no_grad(), torch.cuda.amp.autocast():
+        for img, tgt in val_dl:
+            img = img.to(model_engine.device, non_blocking=True)
+            tgt = tgt.to(model_engine.device, non_blocking=True)
+
+            _, logits_ref = model_engine(img)
+            prob = torch.sigmoid(logits_ref).detach().cpu().numpy()
+            y_pred.append((prob >= thresh).astype(np.float32))
+            y_true.append(tgt.cpu().numpy())
+
+    model_engine.train()
+    y_true = np.vstack(y_true)
+    y_pred = np.vstack(y_pred)
+
+    micro = f1_score(y_true, y_pred, average="micro", zero_division=0)
+    macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    return micro, macro
+
+
+# ────────────────────────────────────────────────────────────────────
+def main(cfg) -> None:
+    # ── metadata ───────────────────────────────────────────────────
+    meta = json.loads(Path(cfg.tag_meta).read_text())
+    tag_cnt = len(meta["idx_to_tag"])
+
+    # ── model & loss ───────────────────────────────────────────────
     model = StudentTagger(tag_cnt)
     criterion = UnifiedFocalLoss()
 
+    # ── training dataset / loader ─────────────────────────────────
+    ds_train = CsvDataset(
+        Path(cfg.csv_path),
+        Path(cfg.img_root),
+        tag_cnt,
+        pad_colour=tuple(cfg.pad_colour),
+        fp16=cfg.fp16,
+    )
+    dl_train = DataLoader(
+        ds_train,
+        batch_size=cfg.micro_batch,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
 
-    # Dataset
-    ds = CsvDataset(Path(cfg.csv_path),
-                    Path(cfg.img_root),
-                    tag_cnt,
-                    pad_colour=tuple(cfg.pad_colour),
-                    fp16=False)
-    ds = CsvDataset(Path(cfg.csv_path),
-                    Path(cfg.img_root)
-                    tag_cnt,
-                    pad_colour=tuple(cfg.pad_colour),
-                    fp16=cfg.fp16)
-    dl = DataLoader(ds, batch_size=cfg.micro_batch,
-                    shuffle=True, num_workers=4, pin_memory=True)
+    # ── optional validation loader ────────────────────────────────
+    val_dl = None
+    if cfg.val_csv:
+        ds_val = CsvDataset(
+            Path(cfg.val_csv),
+            Path(cfg.img_root),
+            tag_cnt,
+            pad_colour=tuple(cfg.pad_colour),
+            fp16=False,
+        )
+        val_dl = DataLoader(
+            ds_val, batch_size=cfg.micro_batch, shuffle=False, num_workers=2
+        )
 
-    # DeepSpeed init
+    # ── DeepSpeed engine ──────────────────────────────────────────
     cfg_path = Path(cfg.output_dir) / "ds_config.json"
-    create_deepspeed_config(cfg_path, cfg.lr, cfg.wd,
-                            len(ds), cfg.micro_batch, cfg.grad_accum)
-    model_engine, optim, _, _ = deepspeed.initialize(
-        model=model, config=str(cfg_path), model_parameters=model.parameters())
+    _make_deepspeed_config(
+        cfg_path,
+        cfg.lr,
+        cfg.wd,
+        len(ds_train),
+        cfg.micro_batch,
+        cfg.grad_accum,
+    )
+    model_engine, _, _, _ = deepspeed.initialize(
+        model=model,
+        config=str(cfg_path),
+        model_parameters=model.parameters(),
+    )
 
-    total_steps = math.ceil(len(dl) / cfg.grad_accum) * cfg.epochs
+    # ── training loop ─────────────────────────────────────────────
+    total_steps = math.ceil(len(dl_train) / cfg.grad_accum) * cfg.epochs
     step = 0
+    Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
+    metrics_file = Path(cfg.output_dir) / "metrics.json"
+
     for epoch in range(cfg.epochs):
-        for img, tgt in dl:
+        for img, tgt in dl_train:
             img = img.to(model_engine.device, non_blocking=True)
             tgt = tgt.to(model_engine.device, non_blocking=True)
 
@@ -124,41 +206,57 @@ def main(cfg):
 
             model_engine.backward(loss)
             model_engine.step()
-            if model_engine.global_rank == 0:
-             metrics_path = Path(cfg.output_dir) / "metrics.json"
-            with metrics_path.open("w") as f:
-                  json.dump(
-                   {"epoch": epoch,
-                     "micro_f1": micro_f1,
-                    "macro_f1": macro_f1},
-                     f, indent=2)
 
-            if step % cfg.log_every == 0 and model_engine.global_rank == 0:
-                print(f"step {step}/{total_steps} | loss {loss.item():.4f}")
+            if (
+                step % cfg.log_every == 0
+                and model_engine.global_rank == 0
+            ):
+                print(f"[{epoch+1}/{cfg.epochs}] step {step:>6}/{total_steps}  "
+                      f"loss={loss.item():.4f}")
+
             step += 1
 
-        # Optional EMA, checkpointing skipped for brevity
+        # ── end‑of‑epoch validation ───────────────────────────────
+        if model_engine.global_rank == 0 and val_dl is not None:
+            micro_f1, macro_f1 = _evaluate_f1(model_engine, val_dl)
+            metrics_file.write_text(
+                json.dumps(
+                    {
+                        "epoch": epoch + 1,
+                        "micro_f1": round(micro_f1, 6),
+                        "macro_f1": round(macro_f1, 6),
+                    },
+                    indent=2,
+                )
+            )
+            print(
+                f"✓ saved metrics – micro‑F1={micro_f1:.4f}, "
+                f"macro‑F1={macro_f1:.4f}"
+            )
 
+
+# ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     p = argparse.ArgumentParser("Student distillation")
-    p.add_argument("--csv-path",   required=True)
-    p.add_argument("--img-root",   required=True)
-    p.add_argument("--tag-meta",   required=True,
-                   help="metadata.json from model repo")
+
+    # paths
+    p.add_argument("--csv-path", required=True, help="Train CSV produced by dataset_builder")
+    p.add_argument("--img-root", required=True, help="Folder containing the images")
+    p.add_argument("--tag-meta", required=True, help="metadata.json from the HF model repo")
     p.add_argument("--output-dir", required=True)
-    p.add_argument("--val-csv", type=Path, required=False,
-                   help="CSV with validation ground‑truth to compute F1.")
-    # Training hyper‑params
-    p.add_argument("--lr",  type=float, default=3e-4)         # :contentReference[oaicite:2]{index=2}
-    p.add_argument("--wd",  type=float, default=0.01)         # :contentReference[oaicite:3]{index=3}
-    p.add_argument("--micro-batch", type=int, default=4)      # :contentReference[oaicite:4]{index=4}
-    p.add_argument("--grad-accum",  type=int, default=8)      # :contentReference[oaicite:5]{index=5}
+    p.add_argument("--val-csv", type=Path, help="CSV with validation ground‑truth")
+
+    # optimisation
+    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--wd", type=float, default=0.01)
+    p.add_argument("--micro-batch", type=int, default=4)
+    p.add_argument("--grad-accum", type=int, default=8)
     p.add_argument("--epochs", type=int, default=5)
+
+    # misc
     p.add_argument("--log-every", type=int, default=50)
-    p.add_argument("--pad-colour", type=int, nargs=3,
-                   default=(0,0,0), metavar=("R","G","B"))
-    p.add_argument("--fp16", action="store_true",
-            help="Load images in FP16 (saves VRAM & bandwidth)")
-    cfg = p.parse_args()
-    Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
-    main(cfg)
+    p.add_argument("--pad-colour", type=int, nargs=3, default=(0, 0, 0))
+    p.add_argument("--fp16", action="store_true", help="Load images in FP16")
+
+    args = p.parse_args()
+    main(args)

@@ -13,7 +13,7 @@ preprocess = transforms.Compose([
     transforms.Resize(size=IMG_SIZE,
         max_size=IMG_SIZE,
         interpolation=InterpolationMode.LANCZOS,
-        antialias=True)
+        antialias=True),
     PadToSquare(fill=0),
     transforms.ToTensor(),       # 0‑1 float32, no mean/std shift
 ])
