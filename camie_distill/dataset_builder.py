@@ -6,6 +6,7 @@ from typing import List, Dict
 import numpy as np
 import torch
 import torch.amp as amp
+import builtins
 from tqdm import tqdm
 from safetensors.torch import load_file as safe_load
 from huggingface_hub import hf_hub_download
@@ -93,7 +94,7 @@ def build_dataset(cfg):
     running_id = 0
     for i in tqdm(range(0, len(images), cfg.batch_size), unit="batch"):
         paths = images[i:i+cfg.batch_size]
-        batch = [load_and_preprocess(p, size=384, fp16=cfg.fp16,
+        batch = [load_and_preprocess(p, size=512, fp16=cfg.fp16,
                                      pad_colour=tuple(cfg.pad_colour))
                  for p in paths]
         logits = runner(batch)

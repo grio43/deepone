@@ -33,7 +33,7 @@ class CsvDataset(Dataset):
         path = self.img_dir / row.file_name
         if path not in self._cache:
             self._cache[path] = load_and_preprocess(
-            path, size=384, pad_colour=self.pad_colour, fp16=self.fp16)
+            path, size=512, pad_colour=self.pad_colour, fp16=self.fp16)
                        
         img = torch.from_numpy(self._cache[path])
         tag_idx = list(map(int, row.tag_idx.split()))
@@ -89,6 +89,7 @@ def main(cfg):
     model = StudentTagger(tag_cnt)
     criterion = UnifiedFocalLoss()
 
+
     # Dataset
     ds = CsvDataset(Path(cfg.csv_path),
                     Path(cfg.img_root),
@@ -120,6 +121,15 @@ def main(cfg):
 
             model_engine.backward(loss)
             model_engine.step()
+            if model_engine.global_rank == 0:
+             metrics_path = Path(cfg.output_dir) / "metrics.json"
+            with metrics_path.open("w") as f:
+                  json.dump(
+                   {"epoch": epoch,
+                     "micro_f1": micro_f1,
+                    "macro_f1": macro_f1},
+                     f, indent=2)
+
             if step % cfg.log_every == 0 and model_engine.global_rank == 0:
                 print(f"step {step}/{total_steps} | loss {loss.item():.4f}")
             step += 1

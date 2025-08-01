@@ -12,7 +12,7 @@ CURRICULUM  = itertools.cycle(CFG["curriculum"])   # infinite iterator
 def make_ds(teacher_repo, thr, out_dir):
     cmd = [
         "camie-build-dataset",
-        "--input-dir",  "/dev/null",              # streaming handled inside
+        "--input-dir",  str(CFG["raw_data_root"]),              # streaming handled inside
         "--output-dir", str(out_dir),
         "--model-repo", teacher_repo,
         "--confidence-threshold", str(thr),
