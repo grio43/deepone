@@ -19,8 +19,8 @@ def load_and_preprocess(
     img = Image.open(path)
     # Handle transparency → white composite
     if img.mode in ("RGBA", "LA") or ("transparency" in img.info):
-        background = Image.new("RGBA", img.size, (255, 255, 255, 255))
-        background.alpha_composite(img.convert("RGBA"))
+        r, g, b = pad_colour
+        background = Image.new("RGBA", img.size, (r, g, b, 255))
         img = background.convert("RGB")
     else:
         img = img.convert("RGB")

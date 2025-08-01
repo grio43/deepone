@@ -10,12 +10,10 @@ class PadToSquare:
 IMG_SIZE = 512   # EfficientNet‑V2‑L default used by Camie
 
 preprocess = transforms.Compose([
-    transforms.Resize(
-        size=IMG_SIZE,
+    transforms.Resize(size=IMG_SIZE,
         max_size=IMG_SIZE,
-        interpolation=InterpolationMode.BICUBIC,
-        antialias=True
-    ),
+        interpolation=InterpolationMode.LANCZOS,
+        antialias=True)
     PadToSquare(fill=0),
     transforms.ToTensor(),       # 0‑1 float32, no mean/std shift
 ])
