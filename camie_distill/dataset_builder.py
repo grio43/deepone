@@ -1,11 +1,11 @@
 from __future__ import annotations
-import argparse, csv, json, shutil
+import argparse, csv, json, shutil, random
 from pathlib import Path
 from typing import List, Dict
 
 import numpy as np
 import torch
-import torch.amp as amp
+from torch.cuda import amp
 import builtins
 from tqdm import tqdm
 from safetensors.torch import load_file as safe_load
@@ -135,13 +135,13 @@ def build_dataset(cfg):
                 near_miss_bucket.append((pic, hard_neg))
 
         # -------- retain near‑misses --------
-        keep = int(round(len(paths) * cfg.near_miss_pct))
-        for pic, hard_neg in random.sample(near_miss_bucket, k=min(keep, len(near_miss_bucket))):
-            writer.writerow(
-                [running_id, pic.name, "", "", " ".join(map(str, hard_neg))]
-            )
-            shutil.copy2(pic, img_out_dir / pic.name)
-            running_id += 1
+        keep = int(round(len(near_miss_bucket) * cfg.near_miss_pct))
+        if keep:                                  # random.sample(k=0) is OK
+            for pic, hard_neg in random.sample(near_miss_bucket, keep):
+                writer.writerow(
+                    [running_id, pic.name, "", "", " ".join(map(str, hard_neg))]
+                )
+                shutil.copy2(pic, img_out_dir / pic.name)+                running_id += 1
 
     print(f"✓ {running_id} samples written to {csv_path}")
 
@@ -150,8 +150,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Camie‑Tagger pseudo‑label generator")
     # I/O
     parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
-            metavar=("R","G","B"),
-            help="Letter‑box colour (default: black)")
+                        metavar=("R","G","B"),
+                        help="Letter‑box colour (default: black)")
     parser.add_argument("--input-dir",  required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--skip-sidecar", action="store_true")
@@ -164,12 +164,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-repo", default="Camais03/camie-tagger")
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     # New argument
-    parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
-                        metavar=("R","G","B"),
-                        help="Letter‑box colour (default: black)")
-    parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
-                        metavar=("R","G","B"),
-                        help="Letter‑box colour (default: black)")
+
 
     # hard‑negative mining 🆕
     parser.add_argument("--hard-negatives", type=int, default=20,

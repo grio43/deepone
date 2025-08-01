@@ -58,7 +58,9 @@ class CsvDataset(Dataset):
             )
 
         img = torch.from_numpy(self._cache[path])
-        tag_idx = list(map(int, str(row.tag_idx).split()))
+        if pd.isna(row.tag_idx):
+            tag_idx = []              # near‑miss ⇒ no positives+        else:
+            tag_idx = list(map(int, str(row.tag_idx).split()))
         target = torch.zeros(self.tag_count, dtype=torch.float32)
         target[tag_idx] = 1.0
         return img, target
@@ -141,15 +143,10 @@ def main(cfg) -> None:
     tag_cnt = len(meta["idx_to_tag"])
 
     # ── model & loss ───────────────────────────────────────────────
-    model      = StudentTagger(tag_cnt)
-    criterion  = UnifiedFocalLoss()
+    model     = StudentTagger(tag_cnt)
+    criterion = UnifiedFocalLoss()
 
-    metric_micro = MultilabelF1Score(
-        num_labels=tag_cnt, average="micro", threshold=0.5
-    ).to(model.device if hasattr(model, "device") else "cuda")
-    metric_macro = MultilabelF1Score(
-        num_labels=tag_cnt, average="macro", threshold=0.5
-    ).to(metric_micro.device)
+
 
     # ── training dataset / loader ─────────────────────────────────
     ds_train = CsvDataset(
@@ -195,6 +192,14 @@ def main(cfg) -> None:
         model=model,
         config=str(cfg_path),
         model_parameters=model.parameters(),
+    )
+
+        # Create metrics **on the engine’s device**
+    metric_micro = MultilabelF1Score(
+        num_labels=tag_cnt, average="micro", threshold=0.5, device=model_engine.device
+    )
+    metric_macro = MultilabelF1Score(
+        num_labels=tag_cnt, average="macro", threshold=0.5, device=model_engine.device
     )
 
     # ── training loop ─────────────────────────────────────────────

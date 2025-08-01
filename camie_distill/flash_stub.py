@@ -9,4 +9,4 @@ def install_flash_stub() -> None:
     def _noop(*_args, **_kwargs):
         return None
 
-    builtins.flash_attn_func = _noop   
+    builtins.flash_attn_func = _noop
