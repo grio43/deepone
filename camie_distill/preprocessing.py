@@ -21,6 +21,7 @@ def load_and_preprocess(
     if img.mode in ("RGBA", "LA") or ("transparency" in img.info):
         r, g, b = pad_colour
         background = Image.new("RGBA", img.size, (r, g, b, 255))
+        background.paste(img, mask=img.split()[-1])
         img = background.convert("RGB")
     else:
         img = img.convert("RGB")
