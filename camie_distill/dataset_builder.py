@@ -11,7 +11,7 @@ from safetensors.torch import load_file as safe_load
 from huggingface_hub import hf_hub_download
 
 from flash_stub import install_flash_stub
-from preprocessing import load_and_preprocess, IMAGE_EXTS
+from camie_distill.preprocessing import load_and_preprocess, IMAGE_EXTS
 
 install_flash_stub()                       # ensure import before model code
 
@@ -92,10 +92,9 @@ def build_dataset(cfg):
     running_id = 0
     for i in tqdm(range(0, len(images), cfg.batch_size), unit="batch"):
         paths = images[i:i+cfg.batch_size]
-        batch = [load_and_preprocess(p, fp16=cfg.fp16,
+        batch = [load_and_preprocess(p, size=384, fp16=cfg.fp16,
                                      pad_colour=tuple(cfg.pad_colour))
                  for p in paths]
-
         logits = runner(batch)
         probs  = 1. / (1. + np.exp(-logits))  # sigmoid
 

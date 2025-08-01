@@ -33,7 +33,8 @@ class CsvDataset(Dataset):
         path = self.img_dir / row.file_name
         if path not in self._cache:
             self._cache[path] = load_and_preprocess(
-                path, pad_colour=self.pad_colour, fp16=self.fp16)
+            path, size=384, pad_colour=self.pad_colour, fp16=self.fp16)
+                       
         img = torch.from_numpy(self._cache[path])
         tag_idx = list(map(int, row.tag_idx.split()))
         target = torch.zeros(self.tag_count, dtype=torch.float32)

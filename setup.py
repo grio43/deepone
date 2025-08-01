@@ -29,7 +29,7 @@ setup(
         "torch>=2.1",
         "timm==0.9.12",
         "safetensors>=0.5.3",
-        "deepspeed>=0.16.3,<0.17",
+        
     ],
     include_package_data=True,
     zip_safe=False,

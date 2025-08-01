@@ -9,11 +9,11 @@ from PIL import Image
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
+# AFTER
 def load_and_preprocess(path: Path,
-                        size: int = 512,
-                        pad_colour: Tuple[int, int, int] = (0, 0, 0),
-                        fp16: bool = False) -> np.ndarray:
-    img = Image.open(path)
+     size: int = 384,
+     pad_colour: Tuple[int, int, int] = (0, 0, 0),
+    fp16: bool = False) -> np.ndarray:
 
     # Handle transparency → white composite
     if img.mode in ("RGBA", "LA") or ("transparency" in img.info):
