@@ -18,3 +18,4 @@ teachers_dir:   ${root}/models/teachers
 students_dir:   ${root}/models/students
 datasets_dir:   ${root}/datasets
 hf_token:       ${env:HF_TOKEN}
+raw_data_root: /mnt/pool/booru

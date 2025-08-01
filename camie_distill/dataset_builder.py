@@ -5,7 +5,7 @@ from typing import List, Dict
 
 import numpy as np
 import torch
-from torch import amp
+import torch.amp as amp
 from tqdm import tqdm
 from safetensors.torch import load_file as safe_load
 from huggingface_hub import hf_hub_download
