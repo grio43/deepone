@@ -141,6 +141,8 @@ if __name__ == "__main__":
     p.add_argument("--tag-meta",   required=True,
                    help="metadata.json from model repo")
     p.add_argument("--output-dir", required=True)
+    p.add_argument("--val-csv", type=Path, required=False,
+                   help="CSV with validation ground‑truth to compute F1.")
     # Training hyper‑params
     p.add_argument("--lr",  type=float, default=3e-4)         # :contentReference[oaicite:2]{index=2}
     p.add_argument("--wd",  type=float, default=0.01)         # :contentReference[oaicite:3]{index=3}

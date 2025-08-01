@@ -105,7 +105,7 @@ def build_dataset(cfg):
             if not len(sel): continue
             tags = [runner.idx2tag[j] for j in sel]
 
-            writer.writerow([running_id, f"images/{pic.name}",
+            writer.writerow([running_id, pic.name,
                              " ".join(map(str, sel)), " ".join(tags)])
             running_id += 1
 

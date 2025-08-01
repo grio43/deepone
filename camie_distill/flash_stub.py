@@ -1,11 +1,12 @@
++"""
++Provide a dummy `flash_attn_func` so that model code written for
++Flash‑Attention v2 can import it even when the C++/CUDA extension is absent.
++"""
+
 def install_flash_stub() -> None:
-    """
-    Provide a dummy `flash_attn_func` so the codebase can run on
-    vanilla PyTorch builds without FlashAttention.
-    """
     import builtins
 
     def _noop(*_args, **_kwargs):
         return None
 
-    builtins.flash_attn_func = _noop
+     builtins.flash_attn_func = _noop   

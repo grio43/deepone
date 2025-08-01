@@ -3,7 +3,7 @@ import timm                    # pip install timm==0.9.12
 from flash_stub import install_flash_stub; install_flash_stub()
 
 class StudentTagger(nn.Module):
-    def __init__(self, total_tags: int, tag_dim: int = 384,
+    def __init__(self, total_tags: int, tag_dim: int = 512,
                  num_heads: int = 8, top_k: int = 75):
         super().__init__()
         self.backbone = timm.create_model("tf_efficientnetv2_s_wp",
