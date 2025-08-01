@@ -5,7 +5,8 @@ promotion_gap:
 promotion_patience: 2            # consecutive wins
 
 # confidence curriculum
-curriculum: [0.65, 0.55, 0.45]
+initial_confidence: 0.65   # start‑point
+min_confidence:     0.35   # floor (don’t go lower)
 
 # compute
 gpus:

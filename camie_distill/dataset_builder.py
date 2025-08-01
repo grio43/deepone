@@ -90,6 +90,7 @@ def build_dataset(cfg):
 
     writer = csv.writer(csv_path.open("w", newline='', encoding="utf-8"))
     writer.writerow(["id", "file_name", "tag_idx", "tag"])
+    writer.writerow(["id", "file_name", "tag_idx", "tag", "neg_idx"])
 
     running_id = 0
     for i in tqdm(range(0, len(images), cfg.batch_size), unit="batch"):
@@ -121,6 +122,9 @@ def build_dataset(cfg):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Camie‑Tagger pseudo‑label generator")
     # I/O
+    parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
+            metavar=("R","G","B"),
+            help="Letter‑box colour (default: black)")
     parser.add_argument("--input-dir",  required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--skip-sidecar", action="store_true")
@@ -136,5 +140,15 @@ if __name__ == "__main__":
     parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
                         metavar=("R","G","B"),
                         help="Letter‑box colour (default: black)")
+    parser.add_argument("--pad-colour", type=int, nargs=3, default=(0,0,0),
+                        metavar=("R","G","B"),
+                        help="Letter‑box colour (default: black)")
+
+    # hard‑negative mining 🆕
+    parser.add_argument("--hard-negatives", type=int, default=20,
+                        help="Save top‑N logits just below threshold")
+    parser.add_argument("--near-miss-pct", type=float, default=0.12,
+                        help="Fraction of each minibatch to keep even when "
+                             "no positive tag passes the threshold")
     cfg = parser.parse_args()
     build_dataset(cfg)

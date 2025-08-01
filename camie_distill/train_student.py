@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, Dataset
+from torchmetrics.classification import MultilabelF1Score
 
 from camie_distill.focal_loss import UnifiedFocalLoss
 from camie_distill.student_model import StudentTagger
@@ -140,8 +141,15 @@ def main(cfg) -> None:
     tag_cnt = len(meta["idx_to_tag"])
 
     # ── model & loss ───────────────────────────────────────────────
-    model = StudentTagger(tag_cnt)
-    criterion = UnifiedFocalLoss()
+    model      = StudentTagger(tag_cnt)
+    criterion  = UnifiedFocalLoss()
+
+    metric_micro = MultilabelF1Score(
+        num_labels=tag_cnt, average="micro", threshold=0.5
+    ).to(model.device if hasattr(model, "device") else "cuda")
+    metric_macro = MultilabelF1Score(
+        num_labels=tag_cnt, average="macro", threshold=0.5
+    ).to(metric_micro.device)
 
     # ── training dataset / loader ─────────────────────────────────
     ds_train = CsvDataset(
@@ -207,10 +215,19 @@ def main(cfg) -> None:
             model_engine.backward(loss)
             model_engine.step()
 
+            # ── update running F1s ────────────────────────────────
+            with torch.no_grad():
+                prob = torch.sigmoid(logits_r.detach())
+                metric_micro.update(prob, tgt)
+                metric_macro.update(prob, tgt)            
+
             if (
-                step % cfg.log_every == 0
+                step % cfg.grad_accum == 0                      # one optimiser step
                 and model_engine.global_rank == 0
             ):
+                micro_f1 = metric_micro.compute().item()
+                macro_f1 = metric_macro.compute().item()
+
                 print(f"[{epoch+1}/{cfg.epochs}] step {step:>6}/{total_steps}  "
                       f"loss={loss.item():.4f}")
 
@@ -220,15 +237,23 @@ def main(cfg) -> None:
         if model_engine.global_rank == 0 and val_dl is not None:
             micro_f1, macro_f1 = _evaluate_f1(model_engine, val_dl)
             metrics_file.write_text(
-                json.dumps(
-                    {
-                        "epoch": epoch + 1,
-                        "micro_f1": round(micro_f1, 6),
-                        "macro_f1": round(macro_f1, 6),
-                    },
-                    indent=2,
+                    json.dumps(
+                        {
+                            "step":  step,
+                            "micro_f1": round(micro_f1, 6),
+                            "macro_f1": round(macro_f1, 6),
+                        },
+                        indent=2,
+                    )
                 )
-            )
+            metric_micro.reset(), metric_macro.reset()
+
+            print(f"[{epoch+1}/{cfg.epochs}] "
+                    f"step {step:>6}  "
+                    f"loss={loss.item():.4f}  "
+                    f"μ‑F1={micro_f1:.4f}  M‑F1={macro_f1:.4f}")
+
+            step += 1           
             print(
                 f"✓ saved metrics – micro‑F1={micro_f1:.4f}, "
                 f"macro‑F1={macro_f1:.4f}"

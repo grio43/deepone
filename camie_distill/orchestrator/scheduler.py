@@ -7,7 +7,9 @@ from pathlib import Path
 
 CFG = yaml.safe_load(Path(__file__).with_name("config.yaml").read_text())
 GPU0, GPU1 = CFG["gpus"]["trainer"], CFG["gpus"]["label_gen"]
-CURRICULUM  = itertools.cycle(CFG["curriculum"])   # infinite iterator
+
+INIT_THR = float(CFG.get("initial_confidence", 0.65))
+MIN_THR  = float(CFG.get("min_confidence",   0.35))
 
 def make_ds(teacher_repo, thr, out_dir):
     cmd = [
@@ -38,9 +40,11 @@ def main():
     teacher = teachers[-1] if teachers else Path("Camais03/camie-tagger")
     version = len(teachers)
 
-    for thr in CURRICULUM:
-        ds_dir = Path(CFG["datasets_dir"]) / f"labels_v{version}_{thr}"
-        ds_proc = make_ds(str(teacher), thr, ds_dir)
+    curr_thr = INIT_THR
+    if wins:
+        new_teacher = Path(CFG["teachers_dir"]) / f"teacher_v{version+1}"
+        shutil.copytree(stu_dir, new_teacher)
+        teacher, version = new_teacher, version+1
         ds_proc.wait()
 
         stu_dir = Path(CFG["students_dir"]) / f"student_v{version}"
@@ -63,6 +67,7 @@ def main():
             new_teacher = Path(CFG["teachers_dir"]) / f"teacher_v{version+1}"
             shutil.copytree(stu_dir, new_teacher)
             teacher, version = new_teacher, version+1
+            curr_thr = max(curr_thr - 0.10, MIN_THR)
             # optional: upload to HF Hub
         else:
             # else: tighten sampling or lower LR, etc.
