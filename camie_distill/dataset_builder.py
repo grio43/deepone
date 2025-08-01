@@ -12,7 +12,7 @@ from safetensors.torch import load_file as safe_load
 from huggingface_hub import hf_hub_download
 from pathlib import Path
 
-from flash_stub import install_flash_stub
+from camie_distill.flash_stub import install_flash_stub
 from camie_distill.preprocessing import load_and_preprocess, IMAGE_EXTS
 
 install_flash_stub()                       # ensure import before model code
@@ -141,7 +141,8 @@ def build_dataset(cfg):
                 writer.writerow(
                     [running_id, pic.name, "", "", " ".join(map(str, hard_neg))]
                 )
-                shutil.copy2(pic, img_out_dir / pic.name)+                running_id += 1
+                shutil.copy2(pic, img_out_dir / pic.name)                
+                running_id += 1
 
     print(f"✓ {running_id} samples written to {csv_path}")
 

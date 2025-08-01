@@ -57,9 +57,9 @@ class CsvDataset(Dataset):
                 path, size=512, pad_colour=self.pad_colour, fp16=self.fp16
             )
 
-        img = torch.from_numpy(self._cache[path])
         if pd.isna(row.tag_idx):
-            tag_idx = []              # near‑miss ⇒ no positives+        else:
+            tag_idx = []              # near‑miss ⇒ no positives
+        else:
             tag_idx = list(map(int, str(row.tag_idx).split()))
         target = torch.zeros(self.tag_count, dtype=torch.float32)
         target[tag_idx] = 1.0

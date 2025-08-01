@@ -1,6 +1,6 @@
 import torch.nn as nn
 import timm                    # pip install timm>=0.9.12
-from flash_stub import install_flash_stub; install_flash_stub()
+from camie_distill.flash_stub import install_flash_stub; install_flash_stub()
 
 class StudentTagger(nn.Module):
     def __init__(self, total_tags: int, tag_dim: int = 512,
