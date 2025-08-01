@@ -1,5 +1,5 @@
 import torch.nn as nn
-import timm                    # pip install timm==0.9.12
+import timm                    # pip install timm>=0.9.12
 from flash_stub import install_flash_stub; install_flash_stub()
 
 class StudentTagger(nn.Module):

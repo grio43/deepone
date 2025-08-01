@@ -13,7 +13,7 @@ Classifier: Operating System :: OS Independent
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: torch>=2.1
-Requires-Dist: timm==0.9.12
+Requires-Dist: timm>=0.9.12
 Requires-Dist: safetensors>=0.5.3
 Requires-Dist: deepspeed<0.17,>=0.16.3
 Dynamic: requires-python

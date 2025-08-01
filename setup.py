@@ -27,7 +27,7 @@ setup(
     packages=find_packages(exclude=("tests", "examples")),
     install_requires=[
         "torch>=2.1",
-        "timm==0.9.12",
+        "timm>=0.9.12",
         "safetensors>=0.5.3",
         
     ],
