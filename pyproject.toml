@@ -8,14 +8,33 @@ version         = "0.1.0"
 description     = "Student-teacher distillation toolkit for Camie-Tagger"
 readme          = "README.md"
 requires-python = ">=3.10"
+license         = { text = "Apache-2.0" }
+authors         = [{ name = "Your Name", email = "you@example.com" }]
+keywords        = ["deep-learning", "vision", "multilabel", "distillation", "huggingface"]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
 
 dependencies = [
   "torch>=2.1",
+  "torchvision",
   "timm==0.9.12",
   "safetensors>=0.5.3",
-  deepspeed==0.14.1
-  huggingface_hub>=0.23
+  "deepspeed==0.14.1",
+  "huggingface_hub>=0.23",
+  "pillow",
+  "numpy",
+  "tqdm",
+  "pandas",
+  "pyyaml", # Added for orchestrator
 ]
 
-# Values you’ll let Setuptools fill in from setup.cfg or other metadata
-dynamic = ["classifiers", "keywords", "license", "authors", "scripts"]
+[project.urls]
+Homepage = "https://github.com/yourname/camie_distill"
+
+[project.scripts]
+camie-build-dataset = "camie_distill.dataset_builder:build_dataset"
+camie-train-student = "camie_distill.train_student:main"

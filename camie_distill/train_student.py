@@ -106,8 +106,6 @@ def main(cfg):
     model_engine, optim, _, _ = deepspeed.initialize(
         model=model, config=str(cfg_path), model_parameters=model.parameters())
 
-    scaler = torch.cuda.amp.GradScaler()
-
     total_steps = math.ceil(len(dl) / cfg.grad_accum) * cfg.epochs
     step = 0
     for epoch in range(cfg.epochs):

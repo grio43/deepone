@@ -23,13 +23,12 @@ def make_ds(teacher_repo, thr, out_dir):
     return subprocess.Popen(cmd, env=env)
 
 def train_student(csv_dir, tag_meta, out_dir):
-    cmd = [
+   cmd = [
         "camie-train-student",
-        "--csv-path", csv_dir/"train_dataset.csv",
-        "--img-root", csv_dir/"images",
-        "--tag-meta", tag_meta,
-        "--output-dir", out_dir,
-        "--val-csv",  csv_dir/"val_dataset.csv",
+        "--csv-path", str(csv_dir / "train_dataset.csv"),
+        "--img-root", str(csv_dir / "images"),
+        "--tag-meta", str(tag_meta),
+        "--output-dir", str(out_dir),
     ]
     env = {"CUDA_VISIBLE_DEVICES": str(GPU0)}
     return subprocess.Popen(cmd, env=env)

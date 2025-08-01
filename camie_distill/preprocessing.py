@@ -11,11 +11,12 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 def load_and_preprocess(
         path: Path,
-        size: int = 512,               # ← default now matches teacher
+        size: int = 512,
         pad_colour: Tuple[int,int,int] = (0,0,0),
         fp16: bool = False
 ) -> np.ndarray:
 
+    img = Image.open(path)
     # Handle transparency → white composite
     if img.mode in ("RGBA", "LA") or ("transparency" in img.info):
         background = Image.new("RGBA", img.size, (255, 255, 255, 255))
