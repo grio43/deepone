@@ -48,8 +48,12 @@ def main():
         stu_proc.wait()
 
         # ── promotion logic ─────────────────────────────────────────
-        met_teacher = json.loads((teacher/"metrics.json").read_text())
-        met_student = json.loads((stu_dir/"metrics.json").read_text())
+        try:
+            met_teacher = json.loads((teacher/"metrics.json").read_text())
+            met_student = json.loads((stu_dir/"metrics.json").read_text())
+        except FileNotFoundError:
+            print("⚠️  metrics.json missing; skipping promotion check.")
+            continue
         wins = sum(
             (met_student[k] - met_teacher[k]) >= CFG["promotion_gap"][k]
             for k in ("micro_f1", "macro_f1")

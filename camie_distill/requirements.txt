@@ -1,5 +1,5 @@
 torch>=2.1
-torchvision
+torchvision>=0.18
 timm==0.9.12
 deepspeed==0.14.1
 huggingface_hub>=0.23
