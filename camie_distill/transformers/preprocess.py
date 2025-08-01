@@ -7,7 +7,7 @@ class PadToSquare:
     # (Code exactly as in the previous message)
     ...
 
-IMG_SIZE = 384   # EfficientNet‑V2‑L default used by Camie
+IMG_SIZE = 512   # EfficientNet‑V2‑L default used by Camie
 
 preprocess = transforms.Compose([
     transforms.Resize(

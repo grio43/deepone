@@ -9,6 +9,7 @@ from torch import amp
 from tqdm import tqdm
 from safetensors.torch import load_file as safe_load
 from huggingface_hub import hf_hub_download
+from pathlib import Path
 
 from flash_stub import install_flash_stub
 from camie_distill.preprocessing import load_and_preprocess, IMAGE_EXTS
